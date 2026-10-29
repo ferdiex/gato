@@ -1,0 +1,469 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Gato: minimax en Python y en Prolog</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,800&display=swap" rel="stylesheet">
+<style>
+:root{
+  --paper:#F1F4F1; --surface:#FFFFFF; --ink:#1D2827; --muted:#56635F; --rule:#CBD5D0;
+  --x:#8A7D16; --o:#3E5A55; --grid:#1D2827; --active:#3E5A55; --on-active:#FFFFFF; --focus:#8A7D16;
+  color-scheme:light;
+  box-sizing:border-box;
+  padding-top:env(safe-area-inset-top,0px);
+  padding-bottom:env(safe-area-inset-bottom,0px);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --paper:#121918; --surface:#1A2322; --ink:#E4ECE8; --muted:#9DACA7; --rule:#2B3836;
+    --x:#D6C65A; --o:#8FC3B0; --grid:#E4ECE8; --active:#8FC3B0; --on-active:#121918; --focus:#D6C65A;
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --paper:#121918; --surface:#1A2322; --ink:#E4ECE8; --muted:#9DACA7; --rule:#2B3836;
+  --x:#D6C65A; --o:#8FC3B0; --grid:#E4ECE8; --active:#8FC3B0; --on-active:#121918; --focus:#D6C65A;
+  color-scheme:dark;
+}
+*,*::before,*::after{box-sizing:border-box}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{
+  margin:0; background:var(--paper); color:var(--ink);
+  font-family:"Bricolage Grotesque",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  font-size:1rem; line-height:1.5;
+}
+.wrap{max-width:66rem; margin:0 auto; padding:1.75rem 1.25rem 3rem}
+header h1{font-size:clamp(2.6rem,7vw,4.2rem); font-weight:800; letter-spacing:-0.03em; line-height:1; margin:0 0 .6rem}
+header p{max-width:38rem; margin:0; color:var(--muted)}
+.layout{
+  display:grid; grid-template-columns:minmax(0,26rem) minmax(0,1fr);
+  grid-template-areas:"play top" "play panel"; grid-template-rows:auto 1fr;
+  column-gap:3rem; margin-top:2rem; align-items:start;
+}
+.top{grid-area:top} .play{grid-area:play} .panel{grid-area:panel}
+@media (max-width:54rem){
+  .wrap{padding-top:1.25rem}
+  .layout{grid-template-columns:minmax(0,1fr); grid-template-areas:"top" "play" "panel"; margin-top:1.25rem}
+  .layout .play{justify-self:center; width:100%; max-width:min(26rem, calc(100svh - 14rem))}
+  .panel{margin-top:2rem}
+}
+
+/* tablero */
+.play{width:100%}
+.board{position:relative; display:grid; grid-template-columns:repeat(3,1fr); aspect-ratio:1/1; width:100%}
+.cell{
+  appearance:none; border:0; background:transparent; padding:0; margin:0; position:relative;
+  cursor:pointer; color:inherit; font:inherit; border-radius:14px;
+}
+.cell:hover:not(:disabled){background:color-mix(in srgb, var(--ink) 6%, transparent)}
+.cell:focus-visible{outline:3px solid var(--focus); outline-offset:-6px}
+.cell:disabled{cursor:default}
+.idx{position:absolute; top:.45rem; left:.6rem; font-size:.8rem; color:var(--muted); font-variant-numeric:tabular-nums}
+.val{position:absolute; left:0; right:0; bottom:.5rem; text-align:center; font-weight:600; font-size:1.05rem; color:var(--muted); font-variant-numeric:tabular-nums}
+.val.best{color:var(--ink); text-decoration:underline; text-decoration-thickness:2px; text-underline-offset:4px}
+.mark{position:absolute; inset:14%; width:72%; height:72%; overflow:visible}
+.mark path,.mark circle{fill:none; stroke-width:11; stroke-linecap:round}
+.mark.x path{stroke:var(--x)}
+.mark.o circle{stroke:var(--o)}
+.mark .draw{stroke-dasharray:1; stroke-dashoffset:1; animation:draw .32s ease-out forwards}
+.mark .draw.second{animation-delay:.16s}
+@keyframes draw{to{stroke-dashoffset:0}}
+svg.grid, svg.win{position:absolute; inset:0; width:100%; height:100%; pointer-events:none}
+svg.grid line{stroke:var(--grid); stroke-width:6; stroke-linecap:round}
+svg.win line{stroke:var(--ink); stroke-width:9; stroke-linecap:round; stroke-dasharray:1; stroke-dashoffset:1; animation:draw .45s .2s ease-out forwards; opacity:.85}
+.legend{margin:.9rem 0 0; color:var(--muted); font-size:.92rem; text-align:center}
+
+/* panel */
+.status{font-size:clamp(1.25rem,3vw,1.55rem); font-weight:800; letter-spacing:-0.01em; line-height:1.25; margin:0 0 .35rem; min-height:2rem}
+.sub{margin:0 0 1.75rem; color:var(--muted); min-height:1.5rem}
+h2{font-size:1.15rem; font-weight:800; margin:0 0 .7rem; letter-spacing:-0.01em}
+.controls{display:grid; gap:1rem; margin-bottom:2rem}
+.field{display:grid; gap:.4rem}
+.field > span{font-weight:600}
+.seg{display:inline-flex; border:1.5px solid var(--active); border-radius:12px; overflow:hidden; justify-self:start}
+.seg button{
+  appearance:none; border:0; background:transparent; color:var(--ink); font:inherit; font-weight:600;
+  padding:.5rem 1.1rem; cursor:pointer; min-width:6.5rem;
+}
+.seg button + button{border-left:1.5px solid var(--active)}
+.seg button[aria-pressed="true"]{background:var(--active); color:var(--on-active)}
+.seg button:focus-visible, .btn:focus-visible, input:focus-visible, summary:focus-visible{outline:3px solid var(--focus); outline-offset:2px}
+.btn{
+  appearance:none; font:inherit; font-weight:600; cursor:pointer; justify-self:start;
+  border:1.5px solid var(--ink); background:var(--ink); color:var(--paper); border-radius:12px; padding:.6rem 1.15rem;
+}
+.btn.quiet{background:transparent; color:var(--ink); border-color:var(--rule)}
+.btn:disabled{opacity:.5; cursor:default}
+.block{border-top:1px solid var(--rule); padding-top:1.25rem; margin-bottom:2rem}
+dl{display:grid; grid-template-columns:auto 1fr; gap:.3rem 1.25rem; margin:0 0 1rem}
+dt{color:var(--muted)}
+dd{margin:0; font-weight:600; font-variant-numeric:tabular-nums}
+.check{display:flex; gap:.6rem; align-items:flex-start; margin-bottom:1rem}
+.check input{margin-top:.3rem; width:1.05rem; height:1.05rem; accent-color:var(--active)}
+.hint{color:var(--muted); font-size:.92rem; margin:.4rem 0 0}
+ol.log{margin:0; padding-left:1.5rem; font-variant-numeric:tabular-nums}
+ol.log li{padding:.1rem 0}
+ol.log .who{font-weight:600}
+.empty{color:var(--muted); margin:0}
+details{border-top:1px solid var(--rule); padding-top:1rem}
+summary{cursor:pointer; font-weight:800; font-size:1.1rem}
+details p, details li{max-width:40rem}
+details ul{padding-left:1.2rem}
+a{color:inherit; text-underline-offset:3px}
+.error{color:var(--ink); background:color-mix(in srgb, var(--x) 18%, transparent); border-radius:10px; padding:.7rem .9rem; margin:0 0 1.5rem}
+@media (prefers-reduced-motion: reduce){
+  .mark .draw, svg.win line{animation:none; stroke-dashoffset:0}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Gato</h1>
+    <p>Juegas contra un agente minimax. El mismo agente está escrito en Python y en Prolog: tú eliges cuál decide sus jugadas.</p>
+  </header>
+
+  <div class="layout">
+    <div class="top">
+      <p class="status" id="status" aria-live="polite">Preparando…</p>
+      <p class="sub" id="sub"></p>
+      <p class="error" id="error" hidden></p>
+    </div>
+
+    <section class="play" aria-label="Tablero">
+      <div class="board" id="board">
+        <svg class="grid" viewBox="0 0 300 300" aria-hidden="true">
+          <line x1="100" y1="10" x2="100" y2="290"/><line x1="200" y1="10" x2="200" y2="290"/>
+          <line x1="10" y1="100" x2="290" y2="100"/><line x1="10" y1="200" x2="290" y2="200"/>
+        </svg>
+        <svg class="win" id="win" viewBox="0 0 300 300" aria-hidden="true"></svg>
+      </div>
+      <p class="legend" id="legend" hidden>Valor minimax de cada casilla libre: +1 gana X, 0 empate, −1 gana O.</p>
+    </section>
+
+    <section class="panel" aria-label="Ajustes y análisis">
+      <div class="controls">
+        <div class="field"><span id="lblEngine">Agente</span>
+          <div class="seg" role="group" aria-labelledby="lblEngine">
+            <button type="button" data-engine="python" aria-pressed="true">Python</button>
+            <button type="button" data-engine="prolog" aria-pressed="false">Prolog</button>
+          </div>
+        </div>
+        <div class="field"><span id="lblStart">Empieza (con X)</span>
+          <div class="seg" role="group" aria-labelledby="lblStart">
+            <button type="button" data-start="human" aria-pressed="true">Tú</button>
+            <button type="button" data-start="agent" aria-pressed="false">El agente</button>
+          </div>
+        </div>
+        <button class="btn" id="newGame" type="button">Nueva partida</button>
+      </div>
+
+      <div class="block" aria-live="polite">
+        <h2>Lo que pensó el agente</h2>
+        <div id="thought"><p class="empty">Cuando el agente juegue, aquí verás dónde jugó, qué valor le dio a la partida y cuánto tardó.</p></div>
+        <label class="check"><input type="checkbox" id="showValues"><span>Mostrar en tu turno el valor minimax de cada casilla libre</span></label>
+        <button class="btn quiet" id="clearMem" type="button">Vaciar la memoria del agente</button>
+        <p class="hint">Después de vaciarla, la siguiente decisión recalcula todo el árbol: compara el tiempo.</p>
+      </div>
+
+      <div class="block">
+        <h2>Python contra Prolog</h2>
+        <p style="margin:0 0 .9rem">Python juega con X y Prolog con O. Como los dos calculan exactamente lo mismo, la partida siempre termina en empate.</p>
+        <button class="btn quiet" id="duel" type="button">Ver la partida</button>
+      </div>
+
+      <div class="block">
+        <h2>Jugadas</h2>
+        <div id="logWrap"><p class="empty">Todavía no hay jugadas.</p></div>
+      </div>
+
+      <details>
+        <summary>Cómo funciona</summary>
+        <p>La página solo dibuja el tablero. Cada regla del juego (jugadas legales, turno, fin de partida y utilidad) y cada decisión del agente se las pregunta al motor elegido, que ejecuta los mismos archivos que vimos en clase: <a href="gato.py">gato.py</a> con Python (Pyodide) y <a href="gato.pl">gato.pl</a> con SWI-Prolog (WebAssembly), ambos dentro de tu navegador.</p>
+        <ul>
+          <li>X es MAX y O es MIN. La utilidad es +1 si gana X, −1 si gana O y 0 si empatan.</li>
+          <li>La memoria es <code>@lru_cache</code> en Python y <code>:- table</code> en Prolog: cada tablero se resuelve una sola vez. En total hay 5,478 tableros distintos.</li>
+          <li>Con juego perfecto el gato termina en empate, así que el agente nunca pierde.</li>
+        </ul>
+        <p>Código, presentaciones y cuaderno de Colab: <a href="https://github.com/ferdiex/gato">github.com/ferdiex/gato</a></p>
+      </details>
+    </section>
+  </div>
+</div>
+
+<script>
+(function(){
+  /* versiones fijas de los motores */
+  const PY_BASE = "https://cdn.jsdelivr.net/npm/pyodide@0.29.5/";
+  const PL_BASE = "https://cdn.jsdelivr.net/npm/swipl-wasm@8.2.2/dist/swipl/";
+
+  const $ = id => document.getElementById(id);
+  const loadScript = src => new Promise((ok, fail) => {
+    const s = document.createElement("script");
+    s.src = src; s.onload = ok;
+    s.onerror = () => fail(new Error("descarga"));
+    document.head.appendChild(s);
+  });
+  async function fetchText(name){
+    let r;
+    try { r = await fetch(name, { cache: "no-cache" }); } catch (e) { r = null; }
+    if (!r || !r.ok) throw new Error("archivo:" + name);
+    return r.text();
+  }
+
+  /* ---------- motores: la misma interfaz para los dos lenguajes ---------- */
+  const engines = {
+    python: {
+      label: "Python", size: "unos 12 MB",
+      ready: null,
+      load(){
+        if (!this.ready) this.ready = (async () => {
+          const code = await fetchText("gato.py");
+          await loadScript(PY_BASE + "pyodide.js");
+          const py = await loadPyodide({ indexURL: PY_BASE });
+          py.FS.writeFile("/home/pyodide/gato.py", code);
+          py.runPython("import gato");        // como módulo: no arranca game()
+          this.g = py.pyimport("gato");
+        })();
+        return this.ready;
+      },
+      js(p){ const v = p.toJs(); p.destroy(); return v; },
+      moves(b){ return this.js(this.g.moves(b)); },
+      toMove(b){ return this.g.to_move(b); },
+      terminal(b){ return this.g.terminal(b); },
+      utility(b){ return this.g.utility(b); },
+      play(b, i, p){ return this.g.play(b, i, p); },
+      decide(b){ const [v, i] = this.js(this.g.minimax(b)); return { value: v, move: i }; },
+      values(b){
+        const p = this.toMove(b);
+        return this.moves(b).map(i => [i, this.js(this.g.minimax(this.g.play(b, i, p)))[0]]);
+      },
+      memory(){ const ci = this.g.minimax.cache_info(); const n = ci.currsize; ci.destroy(); return n; },
+      clear(){ this.g.minimax.cache_clear(); },
+    },
+    prolog: {
+      label: "Prolog", size: "unos 4 MB",
+      ready: null,
+      load(){
+        if (!this.ready) this.ready = (async () => {
+          const code = await fetchText("gato.pl");
+          await loadScript(PL_BASE + "swipl-web.js");
+          const sw = await SWIPL({ arguments: ["-q"], locateFile: f => PL_BASE + f });
+          sw.FS.writeFile("/gato.pl", code);
+          if (!sw.prolog.query("consult('/gato.pl')").once().success) throw new Error("consult");
+          this.sw = sw;
+        })();
+        return this.ready;
+      },
+      q(goal){ return this.sw.prolog.query(goal).once(); },
+      list(b){ return "[" + [...b].map(c => c === "-" ? "e" : c).join(",") + "]"; },
+      str(l){ return l.map(c => c === "e" ? "-" : c).join(""); },
+      moves(b){ return this.q(`moves(${this.list(b)}, M)`).M; },
+      toMove(b){ return this.q(`to_move(${this.list(b)}, P)`).P; },
+      terminal(b){ return this.q(`terminal(${this.list(b)})`).success; },
+      utility(b){ return this.q(`utility(${this.list(b)}, U)`).U; },
+      play(b, i, p){ return this.str(this.q(`play(${this.list(b)}, ${i}, ${p}, B)`).B); },
+      decide(b){ const r = this.q(`minimax(${this.list(b)}, V, I)`); return { value: r.V, move: r.I }; },
+      values(b){
+        const L = this.list(b);
+        return this.q(`to_move(${L}, P), findall([I,V], (moves(${L}, Ms), member(I, Ms), play(${L}, I, P, B2), minimax(B2, V, _)), Ps)`).Ps;
+      },
+      memory(){ return this.q("aggregate_all(count, current_table(_:minimax(_,_,_), _), N)").N; },
+      clear(){ this.q("abolish_all_tables"); },
+    },
+  };
+
+  /* ---------- estado ---------- */
+  let board = "---------", engineName = "python", starter = "human", mode = "human";
+  let human = "x", gen = 0, busy = false, log = [];
+  const cells = [];
+  const LINES = [[0,1,2],[3,4,5],[6,7,8],[0,3,6],[1,4,7],[2,5,8],[0,4,8],[2,4,6]]; // solo para dibujar la línea ganadora
+  const sleep = ms => new Promise(r => setTimeout(r, ms));
+  const frame = () => new Promise(r => requestAnimationFrame(() => setTimeout(r, 0)));
+  const rules = () => engines[mode === "duel" ? "python" : engineName];
+  const fmtVal = v => v > 0 ? "+" + v : v < 0 ? "−" + Math.abs(v) : "0";
+  const fmtMs = ms => ms < 10 ? ms.toFixed(1) + " ms" : Math.round(ms).toLocaleString("es-MX") + " ms";
+  const num = n => n.toLocaleString("es-MX");
+
+  /* ---------- tablero ---------- */
+  const boardEl = $("board");
+  for (let i = 0; i < 9; i++) {
+    const b = document.createElement("button");
+    b.className = "cell"; b.type = "button";
+    b.innerHTML = `<span class="idx">${i}</span><span class="val"></span>`;
+    b.addEventListener("click", () => humanMove(i));
+    boardEl.insertBefore(b, $("win"));
+    cells.push(b);
+  }
+  function markSVG(p, animate){
+    const d = animate ? "draw" : "";
+    return p === "x"
+      ? `<svg class="mark x" viewBox="0 0 100 100" aria-hidden="true"><path class="${d}" pathLength="1" d="M18 18 L82 82"/><path class="${d} second" pathLength="1" d="M82 18 L18 82"/></svg>`
+      : `<svg class="mark o" viewBox="0 0 100 100" aria-hidden="true"><circle class="${d}" pathLength="1" cx="50" cy="50" r="33" transform="rotate(-90 50 50)"/></svg>`;
+  }
+  function render(changed){
+    const humanTurn = isHumanTurn();
+    for (let i = 0; i < 9; i++) {
+      const c = cells[i], m = board[i], old = c.querySelector(".mark");
+      if (m !== "-" && !old) c.insertAdjacentHTML("beforeend", markSVG(m, i === changed));
+      if (m === "-" && old) old.remove();
+      c.querySelector(".val").textContent = "";
+      c.querySelector(".val").className = "val";
+      c.setAttribute("aria-label", `Casilla ${i}, ${m === "-" ? "libre" : m.toUpperCase()}`);
+      c.disabled = !(humanTurn && m === "-");
+    }
+  }
+  function isHumanTurn(){
+    if (mode !== "human" || busy) return false;
+    try { return !rules().terminal(board) && rules().toMove(board) === human; } catch (e) { return false; }
+  }
+  function drawWin(){
+    const svg = $("win"); svg.innerHTML = "";
+    const l = LINES.find(([a, b, c]) => board[a] !== "-" && board[a] === board[b] && board[b] === board[c]);
+    if (!l) return;
+    const ctr = i => [(i % 3) * 100 + 50, Math.floor(i / 3) * 100 + 50];
+    const [x1, y1] = ctr(l[0]), [x2, y2] = ctr(l[2]);
+    const dx = (x2 - x1) * 0.18, dy = (y2 - y1) * 0.18;
+    svg.innerHTML = `<line pathLength="1" x1="${x1 - dx}" y1="${y1 - dy}" x2="${x2 + dx}" y2="${y2 + dy}"/>`;
+  }
+  function showValues(){
+    const on = $("showValues").checked && isHumanTurn();
+    $("legend").hidden = !on;
+    if (!on) return;
+    const vals = rules().values(board);
+    const target = human === "x" ? Math.max(...vals.map(v => v[1])) : Math.min(...vals.map(v => v[1]));
+    for (const [i, v] of vals) {
+      const el = cells[i].querySelector(".val");
+      el.textContent = fmtVal(v);
+      if (v === target) el.classList.add("best");
+    }
+  }
+
+  /* ---------- textos ---------- */
+  function setStatus(main, sub){ $("status").textContent = main; $("sub").textContent = sub || ""; }
+  function showError(msg){ const e = $("error"); e.textContent = msg; e.hidden = !msg; }
+  function renderLog(){
+    const w = $("logWrap");
+    if (!log.length) { w.innerHTML = '<p class="empty">Todavía no hay jugadas.</p>'; return; }
+    w.innerHTML = '<ol class="log">' + log.map(e =>
+      `<li><span class="who">${e.p.toUpperCase()} (${e.who})</span> juega en ${e.i}${e.ms !== undefined ? `, ${fmtMs(e.ms)}` : ""}</li>`).join("") + "</ol>";
+  }
+  function renderThought(t){
+    $("thought").innerHTML = `<dl>
+      <dt>Motor</dt><dd>${t.engine}</dd>
+      <dt>Jugó en</dt><dd>la casilla ${t.move}</dd>
+      <dt>Valor de la partida</dt><dd>${fmtVal(t.value)} (${t.value > 0 ? "gana X" : t.value < 0 ? "gana O" : "empate"} con juego perfecto)</dd>
+      <dt>Tiempo</dt><dd>${fmtMs(t.ms)}</dd>
+      <dt>Tableros en memoria</dt><dd>${num(t.mem)}</dd>
+    </dl>`;
+  }
+  function loadError(e, name){
+    if (String(e.message).startsWith("archivo:"))
+      showError(`El navegador no pudo leer ${e.message.slice(8)}. Abre la página desde https://ferdiex.github.io/gato/ o, en tu computadora, con un servidor local: python3 -m http.server`);
+    else showError(`No se pudo cargar ${engines[name].label}. Revisa tu conexión a internet y recarga la página.`);
+    setStatus(`No se pudo cargar ${engines[name].label}.`);
+  }
+  async function ensure(name, g){
+    const E = engines[name];
+    if (!E.ready) setStatus(`Cargando ${E.label}…`, `Se descarga ${E.size} la primera vez; después el navegador lo guarda.`);
+    try { await E.load(); } catch (e) { engines[name].ready = null; loadError(e, name); throw e; }
+    if (g !== gen) throw new Error("cancelado");
+  }
+
+  /* ---------- flujo del juego ---------- */
+  async function step(g){
+    try {
+      await ensure(mode === "duel" ? "python" : engineName, g);
+      if (mode === "duel") await ensure("prolog", g);
+      showError("");
+      const R = rules();
+      if (R.terminal(board)) return finish();
+      const p = R.toMove(board);
+      if (mode === "human" && p === human) {
+        busy = false; render();
+        setStatus("Tu turno: toca una casilla libre.", `Juegas con ${human.toUpperCase()}. Agente: ${engines[engineName].label}.`);
+        showValues();
+        return;
+      }
+      const name = mode === "duel" ? (p === "x" ? "python" : "prolog") : engineName;
+      const E = engines[name];
+      busy = true; render();
+      setStatus(`${E.label} está pensando…`, mode === "duel" ? "Python juega con X y Prolog con O." : "");
+      await frame();
+      if (mode === "duel") await sleep(650);
+      if (g !== gen) return;
+      const t0 = performance.now();
+      const d = E.decide(board);
+      const ms = performance.now() - t0;
+      if (g !== gen) return;
+      apply(d.move, p, E.label, ms);
+      renderThought({ engine: E.label, move: d.move, value: d.value, ms, mem: E.memory() });
+      busy = false;
+      step(g);
+    } catch (e) { if (e.message !== "cancelado") console.error(e); }
+  }
+  function apply(i, p, who, ms){
+    board = rules().play(board, i, p);
+    log.push({ p, who, i, ms });
+    render(i); renderLog();
+  }
+  function humanMove(i){
+    if (!isHumanTurn() || !rules().moves(board).includes(i)) return;
+    apply(i, human, "tú");
+    busy = true; render(i);
+    step(gen);
+  }
+  function finish(){
+    busy = false; render(); drawWin(); $("legend").hidden = true;
+    const u = rules().utility(board);
+    if (mode === "duel") setStatus(u === 0 ? "Empate, como siempre entre Python y Prolog." : u > 0 ? "Ganó Python." : "Ganó Prolog.", "Pulsa Nueva partida para jugar tú.");
+    else {
+      const mine = human === "x" ? u : -u;
+      setStatus(mine > 0 ? "Ganaste." : mine < 0 ? "Ganó el agente." : "Empate.", mine === 0 ? "Con juego perfecto el gato siempre termina así." : "");
+    }
+  }
+  function reset(newMode){
+    gen++; mode = newMode; board = "---------"; log = []; busy = false;
+    human = starter === "human" ? "x" : "o";
+    cells.forEach(c => { const m = c.querySelector(".mark"); if (m) m.remove(); });
+    $("win").innerHTML = ""; $("legend").hidden = true;
+    renderLog(); render();
+    step(gen);
+  }
+
+  /* ---------- controles ---------- */
+  document.querySelectorAll("[data-engine]").forEach(b => b.addEventListener("click", () => {
+    engineName = b.dataset.engine;
+    document.querySelectorAll("[data-engine]").forEach(x => x.setAttribute("aria-pressed", String(x === b)));
+    if (mode === "duel") return reset("human");
+    gen++; step(gen);                      // la partida sigue con el nuevo motor
+  }));
+  document.querySelectorAll("[data-start]").forEach(b => b.addEventListener("click", () => {
+    starter = b.dataset.start;
+    document.querySelectorAll("[data-start]").forEach(x => x.setAttribute("aria-pressed", String(x === b)));
+    reset("human");
+  }));
+  $("newGame").addEventListener("click", () => reset("human"));
+  $("duel").addEventListener("click", () => reset("duel"));
+  $("showValues").addEventListener("change", () => { render(); showValues(); });
+  $("clearMem").addEventListener("click", () => {
+    const E = engines[mode === "duel" ? "python" : engineName];
+    if (!E.ready) return;
+    E.ready.then(() => {
+      E.clear();
+      $("thought").innerHTML = `<p class="empty">Memoria de ${E.label} vacía: 0 tableros guardados. La siguiente decisión recalcula todo.</p>`;
+    });
+  });
+  document.addEventListener("keydown", e => {
+    if (e.target.closest && e.target.closest("input, button") && e.key === " ") return;
+    if (/^[0-8]$/.test(e.key)) humanMove(+e.key);
+  });
+
+  reset("human");
+})();
+</script>
+</body>
+</html>
