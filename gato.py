@@ -89,7 +89,8 @@ def game():
             print(f"Agent plays {i}")
         board = play(board, i, player)
     show(board)
-    print(RESULT[utility(board)])
+    u = utility(board)
+    print(RESULT[(u > 0) - (u < 0)])  # sign only
 
 
 if __name__ == "__main__":

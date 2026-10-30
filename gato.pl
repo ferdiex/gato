@@ -78,7 +78,8 @@ game :- turn([e,e,e,e,e,e,e,e,e]).
 
 turn(Board) :-
     terminal(Board), !,
-    show(Board), utility(Board, U), result(U).
+    show(Board), utility(Board, U),
+    S is sign(U), result(S).          % only the sign matters
 turn(Board) :-
     show(Board), to_move(Board, P),
     choose(P, Board, I),
